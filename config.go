@@ -8,7 +8,7 @@ type Config struct {
 	Password string
 	Charset  string
 	Prefix   string
-	Conn     bool
+	useDb    bool
 	Debug    bool
 	Explain  bool
 }

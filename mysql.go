@@ -11,6 +11,8 @@ import (
 
 type DB struct {
 	SQL    *sql.DB
+	stmt   *sql.Stmt
+	rows   *sql.Rows
 	config *Config
 	params sync.Pool
 	pk     string
@@ -25,7 +27,7 @@ type DB struct {
 	RowNum int64
 }
 
-func Conn(cfg *Config) *DB {
+func Open(cfg *Config) *DB {
 	cfg = cfg.Configure()
 
 	opt := []string{
@@ -39,7 +41,7 @@ func Conn(cfg *Config) *DB {
 		")/",
 	}
 
-	if cfg.Conn {
+	if cfg.useDb {
 		opt = []string{
 			strings.Join(opt, ""),
 			cfg.Database,
@@ -68,9 +70,9 @@ func Conn(cfg *Config) *DB {
 }
 
 func New(cfg *Config) *DB {
-	cfg.Conn = true
+	cfg.useDb = true
 
-	return Conn(cfg)
+	return Open(cfg)
 }
 
 func (db *DB) setParams(i []interface{}) {
@@ -308,6 +310,10 @@ func (db *DB) prepare(query string) *sql.Stmt {
 
 	stmt, err := db.SQL.Prepare(query)
 	if err != nil {
+		defer func() {
+			_ = stmt.Close()
+		}()
+
 		logger.Fatal(err)
 	}
 
@@ -318,37 +324,47 @@ func (db *DB) Prepare() *sql.Stmt {
 	return db.prepare(db.MakeSQL())
 }
 
-func (db *DB) fetch(stmt *sql.Stmt, args ...interface{}) (*sql.Rows, []string) {
-	rows, err := stmt.Query(args...)
-	defer func() {
-		_ = stmt.Close()
-	}()
+func (db *DB) stmtClose() {
+	_ = db.stmt.Close()
+}
+
+func (db *DB) rowsClose() {
+	_ = db.rows.Close()
+}
+
+func (db *DB) fetch(args ...interface{}) (fields []string) {
+	rows, err := db.stmt.Query(args...)
+	defer db.stmtClose()
+
+	db.rows = rows
 
 	if err != nil {
+		defer db.rowsClose()
 		logger.Fatal(err)
 	}
 
-	fields, err := rows.Columns()
+	fields, err = rows.Columns()
 	if err != nil {
+		defer db.rowsClose()
 		logger.Fatal(err)
 	}
 
-	return rows, fields
+	return
 }
 
-func (db *DB) Fetch() (rows *sql.Rows, fields []string) {
-	return db.fetch(db.Prepare(), db.getParams()...)
+func (db *DB) Fetch() (fields []string) {
+	db.stmt = db.Prepare()
+
+	return db.fetch(db.getParams()...)
 }
 
-func (db *DB) Result(rows *sql.Rows, fields []string) (res []interface{}) {
-	defer func() {
-		_ = rows.Close()
-	}()
+func (db *DB) Result(fields []string) (res []interface{}) {
+	defer db.rowsClose()
 
-	for rows.Next() {
+	for db.rows.Next() {
 		data := MakeArgs(len(fields))
 
-		err := rows.Scan(data...)
+		err := db.rows.Scan(data...)
 		if err != nil {
 			logger.Error(err)
 
@@ -367,27 +383,27 @@ func (db *DB) Result(rows *sql.Rows, fields []string) (res []interface{}) {
 }
 
 func (db *DB) Select() []interface{} {
-	rows, fields := db.Fetch()
-
-	return db.Result(rows, fields)
+	return db.Result(db.Fetch())
 }
 
 func (db *DB) Find() map[string]interface{} {
 	db.limit = "1"
 
-	rows, fields := db.Fetch()
+	fields := db.Fetch()
 
 	db.limit = ""
 
-	return db.Result(rows, fields)[0].(map[string]interface{})
+	return db.Result(fields)[0].(map[string]interface{})
 }
 
 func (db *DB) Value(field string) string {
 	db.field = field
+	db.stmt  = db.Prepare()
+	defer db.stmtClose()
 
 	var res interface{}
 
-	err := db.Prepare().QueryRow(db.getParams()...).Scan(&res)
+	err := db.stmt.QueryRow(db.getParams()...).Scan(&res)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "<nil>"
@@ -401,8 +417,10 @@ func (db *DB) Value(field string) string {
 
 func (db *DB) Count() (num int) {
 	db.field = "count(1)"
+	db.stmt  = db.Prepare()
+	defer db.stmtClose()
 
-	err := db.Prepare().QueryRow(db.getParams()...).Scan(&num)
+	err := db.stmt.QueryRow(db.getParams()...).Scan(&num)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return -1
@@ -415,9 +433,9 @@ func (db *DB) Count() (num int) {
 }
 
 func (db *DB) Query(query string, args ...interface{}) []interface{} {
-	rows, fields := db.fetch(db.prepare(query), args...)
+	db.stmt = db.prepare(query)
 
-	return db.Result(rows, fields)
+	return db.Result(db.fetch(args...))
 }
 
 func (db *DB) OneRow(query string, args ...interface{}) map[string]interface{} {
@@ -425,15 +443,16 @@ func (db *DB) OneRow(query string, args ...interface{}) map[string]interface{} {
 }
 
 func (db *DB) Exec(query string, args ...interface{}) {
-	res, err := db.prepare(query).Exec(args...)
+	db.stmt = db.prepare(query)
+	defer db.stmtClose()
+
+	res, err := db.stmt.Exec(args...)
 	if err != nil {
 		logger.Fatal(err)
 	}
 
 	db.LastId, _ = res.LastInsertId()
 	db.RowNum, _ = res.RowsAffected()
-
-	return
 }
 
 func (db *DB) TxExec(query string, args ...interface{}) {
@@ -446,16 +465,14 @@ func (db *DB) TxExec(query string, args ...interface{}) {
 		logger.Fatal(err)
 	}
 
-	stmt, err := tx.Prepare(query)
-	defer func() {
-		_ = stmt.Close()
-	}()
+	db.stmt, err = tx.Prepare(query)
+	defer db.stmtClose()
 
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	res, err := stmt.Exec(args...)
+	res, err := db.stmt.Exec(args...)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -466,8 +483,6 @@ func (db *DB) TxExec(query string, args ...interface{}) {
 
 	db.LastId, _ = res.LastInsertId()
 	db.RowNum, _ = res.RowsAffected()
-
-	return
 }
 
 func (db *DB) insert(data map[string]interface{}) string {

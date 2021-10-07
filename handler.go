@@ -11,7 +11,7 @@ import (
 var logger *log.Logger
 
 func init() {
-	logger = log.New(&log.Config{Traceback: true})
+	logger = log.New(&log.Config{})
 }
 
 func MakeBackQuote(s, sep string) string {
