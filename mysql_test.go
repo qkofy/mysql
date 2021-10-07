@@ -6,10 +6,9 @@ import (
 )
 
 var db = New(&Config{
-	Host: "103.205.6.97",
-	Database: "llqapi_huochipdf",
-	Username: "llqapi_huochipdf",
-	Password: "KLRX7jZFpFdSezGw",
+	Database: "",
+	Username: "",
+	Password: "",
 })
 
 func TestMakeSQL(t *testing.T) {
@@ -21,7 +20,7 @@ func TestMakeSQL(t *testing.T) {
 	fmt.Println("where.1:",db.Where("id > 0 and (phone = 12332 or phone = 32123) and status = 1").where)
 	fmt.Println("where.2:",db.Where([]string{"status", "1"}).where)
 	fmt.Println("where.3:",db.Where([]string{"name", "like", "%u%"}).where)
-	fmt.Println("where.4:",db.Where([][]string{[]string{"status", "1"},[]string{"fail", ">", "5"}}).where)
+	fmt.Println("where.4:",db.Where([][]string{{"status", "1"},{"fail", ">", "5"}}).where)
 	fmt.Println("where.5:",db.Where([]interface{}{"id = 1 or phone = 12211"}).where)
 	fmt.Println("where.6:",db.Where([]interface{}{[]string{"status", "1"}, []string{"name", "like", "%u%"}}).where)
 	fmt.Println("where.7:",db.Where([]interface{}{[]interface{}{"status", 1},[]interface{}{"fail", ">", 5}}).where)
@@ -39,7 +38,7 @@ func TestMakeSQL(t *testing.T) {
 		"and": []string{"name", "like", "%u%"},
 	}).where)
 	fmt.Println("where.14:",db.Where(map[string]interface{}{
-		"and": [][]string{[]string{"status", "1"},[]string{"fail", ">", "5"}},
+		"and": [][]string{{"status", "1"},{"fail", ">", "5"}},
 	}).where)
 	fmt.Println("where.15:",db.Where(map[string]interface{}{
 		"and": []interface{}{"id = 1 or phone = 12211"},
@@ -72,7 +71,7 @@ func TestMakeSQL(t *testing.T) {
 		"or": []string{"name", "like", "%u%"},
 	}).where)
 	fmt.Println("where.24:",db.Where(map[string]interface{}{
-		"or": [][]string{[]string{"status", "1"},[]string{"fail", ">", "5"}},
+		"or": [][]string{{"status", "1"},{"fail", ">", "5"}},
 	}).where)
 	fmt.Println("where.25:",db.Where(map[string]interface{}{
 		"or": []interface{}{"id = 1 or phone = 12211"},
@@ -173,7 +172,7 @@ func TestInsert(t *testing.T) {
 	db.Configure("Debug", true).Table("pdf_hot").Insert(map[string]interface{}{
 		"cid": 1,
 		"name": "test",
-		"url": "http://www.test.com",
+		"url": "https://www.test.com",
 	})
 
 	fmt.Println("lastId:", db.LastId)
@@ -183,8 +182,8 @@ func TestInsert(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	db.Configure("Debug", true).Table("pdf_hot").Where("id = 3").Update(map[string]interface{}{
 		"cid": 2,
-		"name": "ceshi",
-		"url": "http://www.ceshi.com",
+		"name": "ce shi",
+		"url": "https://www.ceshi.com",
 	})
 
 	fmt.Println("lastId:", db.LastId)
