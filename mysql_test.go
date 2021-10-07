@@ -198,7 +198,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestAutoIncrement(t *testing.T) {
-	db.Configure("Debug", true).Table("pdf_hot").AutoIncrement(1)
+	db.Configure("Debug", true).Table("pdf_hot").AutoIncrement(10)
 
 	fmt.Println("lastId:", db.LastId)
 	fmt.Println("rowNum:", db.RowNum)
