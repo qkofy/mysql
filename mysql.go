@@ -324,6 +324,10 @@ func (db *DB) Prepare() *sql.Stmt {
 	return db.prepare(db.MakeSQL())
 }
 
+func (db *DB) Stmt(query string) *sql.Stmt {
+	return db.prepare(query)
+}
+
 func (db *DB) stmtClose() {
 	_ = db.stmt.Close()
 }
