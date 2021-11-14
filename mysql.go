@@ -320,12 +320,14 @@ func (db *DB) prepare(query string) *sql.Stmt {
 	return stmt
 }
 
-func (db *DB) Prepare() *sql.Stmt {
-	return db.prepare(db.MakeSQL())
+func (db *DB) Prepare(query string) *sql.Stmt {
+	db.stmt = db.prepare(query)
+
+	return db.stmt
 }
 
-func (db *DB) Stmt(query string) *sql.Stmt {
-	return db.prepare(query)
+func (db *DB) sqlStmt() *sql.Stmt {
+	return db.prepare(db.MakeSQL())
 }
 
 func (db *DB) stmtClose() {
@@ -357,7 +359,7 @@ func (db *DB) fetch(args ...interface{}) (fields []string) {
 }
 
 func (db *DB) Fetch() (fields []string) {
-	db.stmt = db.Prepare()
+	db.stmt = db.sqlStmt()
 
 	return db.fetch(db.getParams()...)
 }
@@ -402,7 +404,7 @@ func (db *DB) Find() map[string]interface{} {
 
 func (db *DB) Value(field string) string {
 	db.field = field
-	db.stmt  = db.Prepare()
+	db.stmt  = db.sqlStmt()
 	defer db.stmtClose()
 
 	var res interface{}
@@ -421,7 +423,7 @@ func (db *DB) Value(field string) string {
 
 func (db *DB) Count() (num int) {
 	db.field = "count(1)"
-	db.stmt  = db.Prepare()
+	db.stmt  = db.sqlStmt()
 	defer db.stmtClose()
 
 	err := db.stmt.QueryRow(db.getParams()...).Scan(&num)
@@ -523,12 +525,44 @@ func (db *DB) insert(data map[string]interface{}) string {
 	return query
 }
 
-func (db *DB) Insert(data map[string]interface{}) {
-	db.Exec(db.insert(data), db.getParams()...)
-}
+func (db *DB) insertGroup(data []map[string]interface{}) (string, [][]interface{}) {
+	var (
+		key []string
+		val []string
+	)
 
-func (db *DB) TxInsert(data map[string]interface{}) {
-	db.TxExec(db.insert(data), db.getParams()...)
+	args := make([][]interface{}, len(data))
+
+	for i := 0; i < len(data); i++ {
+		var tmp []interface{}
+
+		for k, v := range data[i] {
+			if i == 0 {
+				key = append(key, k)
+				val = append(val, "?")
+			}
+
+			tmp = append(tmp, v)
+		}
+
+		args[i] = tmp
+	}
+
+	query := strings.Join([]string{
+		"INSERT INTO `",
+		db.table,
+		"` (",
+		db.Field(key).field,
+		") VALUES (",
+		strings.Join(val, ", "),
+		")",
+	}, "")
+
+	if db.config.Debug {
+		logger.Debug(query)
+	}
+
+	return query, args
 }
 
 func (db *DB) update(data map[string]interface{}) string {
@@ -567,8 +601,94 @@ func (db *DB) update(data map[string]interface{}) string {
 	return query
 }
 
-func (db *DB) Update(data map[string]interface{}) {
-	db.Exec(db.update(data), db.getParams()...)
+func (db *DB) updateGroup(data []map[string]interface{}) (string, [][]interface{}) {
+	var key []string
+
+	args := make([][]interface{}, len(data))
+	tmp  := db.getParams()
+
+	for i := 0; i < len(data); i++ {
+		var val []interface{}
+
+		for k, v := range data[i] {
+			if i == 0 {
+				key = append(key, "`" + k + "` = ?")
+			}
+
+			val = append(val, v)
+
+			if db.where != "" {
+				val = append(val, tmp...)
+			}
+		}
+
+		args[i] = val
+	}
+
+	query := strings.Join([]string{
+		"UPDATE `",
+		db.table,
+		"` SET ",
+		strings.Join(key, ", "),
+		func() string {
+			if db.where == "" {
+				return ""
+			} else {
+				return " WHERE " + db.where
+			}
+		}(),
+	}, "")
+
+	return query, args
+}
+
+func (db *DB) save(data interface{}, handle string) {
+	switch data.(type) {
+	case map[string]interface{}:
+		if handle == "insert" {
+			db.Exec(db.insert(data.(map[string]interface{})), db.getParams()...)
+		} else if handle == "update" {
+			db.Exec(db.update(data.(map[string]interface{})), db.getParams()...)
+		} else {
+			logger.Fatal("invalid handle:", handle)
+		}
+	case []map[string]interface{}:
+		var (
+			query string
+			args  [][]interface{}
+		)
+
+		if handle == "insert" {
+			query, args = db.insertGroup(data.([]map[string]interface{}))
+		} else if handle == "update" {
+			query, args = db.updateGroup(data.([]map[string]interface{}))
+		} else {
+			logger.Fatal("invalid handle:", handle)
+		}
+
+		db.stmt = db.prepare(query)
+		defer db.stmtClose()
+
+		for i := 0; i < len(args); i++ {
+			if _, err := db.stmt.Exec(args[i]...); err != nil {
+				logger.Fatal(i, err)
+			}
+		}
+	default:
+		logger.Fatal("invalid argument")
+	}
+}
+
+func (db *DB) Insert(data interface{}) {
+	db.save(data, "insert")
+}
+
+func (db *DB) TxInsert(data map[string]interface{}) {
+	db.TxExec(db.insert(data), db.getParams()...)
+}
+
+func (db *DB) Update(data interface{}) {
+	db.save(data, "update")
 }
 
 func (db *DB) TxUpdate(data map[string]interface{}) {

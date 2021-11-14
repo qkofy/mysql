@@ -1,4 +1,4 @@
 github.com/go-sql-driver/mysql v1.6.0 h1:BCTh4TKNUYmOmMUcQ3IipzF5prigylS7XXjEkfCHuOE=
 github.com/go-sql-driver/mysql v1.6.0/go.mod h1:DCzpHaOWr8IXmIStZouvnhqoel9Qv2LBy8hT2VhHyBg=
-github.com/qkofy/log v0.3.0 h1:kefRUO/Ym1kfqFvnAdthCcudKrJUM1pnfZQkKeGEN38=
-github.com/qkofy/log v0.3.0/go.mod h1:xzf3eu1XT/V+UPHfupCB8gV5L4ljm++idtQ6JymHheA=
+github.com/qkofy/log v0.3.2 h1:S+knCrtugOvY6flF4hlfBSc3sG9J1fkrMVB66Px+kQQ=
+github.com/qkofy/log v0.3.2/go.mod h1:xzf3eu1XT/V+UPHfupCB8gV5L4ljm++idtQ6JymHheA=
