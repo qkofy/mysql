@@ -536,13 +536,16 @@ func (db *DB) insertGroup(data []map[string]interface{}) (string, [][]interface{
 	for i := 0; i < len(data); i++ {
 		var tmp []interface{}
 
-		for k, v := range data[i] {
-			if i == 0 {
+		if i == 0 {
+			for k, v := range data[i] {
 				key = append(key, k)
 				val = append(val, "?")
+				tmp = append(tmp, v)
 			}
-
-			tmp = append(tmp, v)
+		} else {
+			for j := 0; j < len(key); j++ {
+				tmp = append(tmp, data[i][key[j]])
+			}
 		}
 
 		args[i] = tmp
@@ -602,7 +605,10 @@ func (db *DB) update(data map[string]interface{}) string {
 }
 
 func (db *DB) updateGroup(data []map[string]interface{}) (string, [][]interface{}) {
-	var key []string
+	var (
+		key []string
+		kys []string
+	)
 
 	args := make([][]interface{}, len(data))
 	tmp  := db.getParams()
@@ -610,16 +616,20 @@ func (db *DB) updateGroup(data []map[string]interface{}) (string, [][]interface{
 	for i := 0; i < len(data); i++ {
 		var val []interface{}
 
-		for k, v := range data[i] {
-			if i == 0 {
+		if i == 0 {
+			for k, v := range data[i] {
 				key = append(key, "`" + k + "` = ?")
+				kys = append(kys, k)
+				val = append(val, v)
 			}
-
-			val = append(val, v)
-
-			if db.where != "" {
-				val = append(val, tmp...)
+		} else {
+			for j := 0; j < len(kys); j++ {
+				val = append(val, data[i][kys[j]])
 			}
+		}
+
+		if db.where != "" {
+			val = append(val, tmp...)
 		}
 
 		args[i] = val
